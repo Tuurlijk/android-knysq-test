@@ -1,89 +1,79 @@
+use std::sync::mpsc::channel;
+use std::time::Duration;
 ///! Based on https://github.com/RustAudio/cpal/blob/master/examples/android.rs
 use android_activity::{AndroidApp, InputStatus, MainEvent, PollEvent};
-use log::info;
+use log::{info, LevelFilter};
 
-use cpal::{
-    traits::{DeviceTrait, HostTrait, StreamTrait},
-    SizedSample,
+use knyst::{
+    audio_backend::{CpalBackend, CpalBackendOptions},
+    prelude::*,
 };
-use cpal::{FromSample, Sample};
-
-fn write_data<T>(output: &mut [T], channels: usize, next_sample: &mut dyn FnMut() -> f32)
-where
-    T: Sample + FromSample<f32>,
-{
-    for frame in output.chunks_mut(channels) {
-        let value: T = T::from_sample(next_sample());
-        for sample in frame.iter_mut() {
-            *sample = value;
-        }
-    }
-}
-
-fn make_audio_stream<T>(
-    device: &cpal::Device,
-    config: &cpal::StreamConfig,
-) -> Result<cpal::Stream, anyhow::Error>
-where
-    T: SizedSample + FromSample<f32>,
-{
-    let sample_rate = config.sample_rate.0 as f32;
-    let channels = config.channels as usize;
-
-    // Produce a sinusoid of maximum amplitude.
-    let mut sample_clock = 0f32;
-    let mut next_value = move || {
-        sample_clock = (sample_clock + 1.0) % sample_rate;
-        (sample_clock * 440.0 * 2.0 * std::f32::consts::PI / sample_rate).sin()
-    };
-
-    let err_fn = |err| eprintln!("an error occurred on stream: {}", err);
-
-    let stream = device.build_output_stream(
-        config,
-        move |data: &mut [T], _: &cpal::OutputCallbackInfo| {
-            write_data(data, channels, &mut next_value)
-        },
-        err_fn,
-        None,
-    )?;
-
-    Ok(stream)
-}
 
 #[no_mangle]
 fn android_main(app: AndroidApp) {
-    android_logger::init_once(android_logger::Config::default().with_min_level(log::Level::Info));
+    android_logger::init_once(android_logger::Config::default().with_max_level(LevelFilter::Trace));
 
     let mut quit = false;
     let mut redraw_pending = true;
     let mut render_state: Option<()> = Default::default();
 
-    let host = cpal::default_host();
+    let (error_sender, _error_receiver) = channel();
+    let mut backend = CpalBackend::new(CpalBackendOptions::default()).expect("Cpal backend creation failed");
+    let _sphere = KnystSphere::start(
+        &mut backend,
+        SphereSettings {
+            num_inputs: 0,
+            num_outputs: 1,
+            ..Default::default()
+        },
+        Box::new(move |error| {
+            error_sender.send(format!("{error}")).unwrap();
+        }),
+    );
 
-    let device = host
-        .default_output_device()
-        .expect("failed to find output device");
+    let sample_rate = backend.sample_rate() as f32;
+    let block_size = backend.block_size().unwrap_or(64);
 
-    let config = device.default_output_config().unwrap();
+    let mut k = knyst_commands();
 
-    let stream = match config.sample_format() {
-        cpal::SampleFormat::I8 => make_audio_stream::<i8>(&device, &config.into()).unwrap(),
-        cpal::SampleFormat::I16 => make_audio_stream::<i16>(&device, &config.into()).unwrap(),
-        // cpal::SampleFormat::I24 => run::<I24>(&device, &config.into()).unwrap(),
-        cpal::SampleFormat::I32 => make_audio_stream::<i32>(&device, &config.into()).unwrap(),
-        // cpal::SampleFormat::I48 => run::<I48>(&device, &config.into()).unwrap(),
-        cpal::SampleFormat::I64 => make_audio_stream::<i64>(&device, &config.into()).unwrap(),
-        cpal::SampleFormat::U8 => make_audio_stream::<u8>(&device, &config.into()).unwrap(),
-        cpal::SampleFormat::U16 => make_audio_stream::<u16>(&device, &config.into()).unwrap(),
-        // cpal::SampleFormat::U24 => run::<U24>(&device, &config.into()).unwrap(),
-        cpal::SampleFormat::U32 => make_audio_stream::<u32>(&device, &config.into()).unwrap(),
-        // cpal::SampleFormat::U48 => run::<U48>(&device, &config.into()).unwrap(),
-        cpal::SampleFormat::U64 => make_audio_stream::<u64>(&device, &config.into()).unwrap(),
-        cpal::SampleFormat::F32 => make_audio_stream::<f32>(&device, &config.into()).unwrap(),
-        cpal::SampleFormat::F64 => make_audio_stream::<f64>(&device, &config.into()).unwrap(),
-        sample_format => panic!("Unsupported sample format '{sample_format}'"),
-    };
+    let mut graph_settings = k.default_graph_settings();
+    graph_settings.sample_rate = sample_rate;
+    graph_settings.block_size = block_size;
+    graph_settings.num_outputs = 2;
+    graph_settings.num_inputs = 0;
+    let mut graph = Graph::new(graph_settings);
+
+    let amp = graph.push(Mult);
+
+    graph.connect(amp.to_graph_out().channels(2)).unwrap();
+
+    let noise_node: NodeId;
+
+    let noise = PinkNoise::new();
+    noise_node = graph.push(noise);
+
+    graph
+        .connect(noise_node.to(amp).to_index(0))
+        .unwrap();
+
+    graph
+        .connect(
+            constant(0.5)
+                .to(amp)
+                .to_index(1),
+        )
+        .unwrap();
+
+    graph.connect(amp.to_graph_out().channels(2)).unwrap();
+
+    let graph_id = k.push(graph, inputs!());
+    k.connect(graph_id.to_graph_out().channels(2));
+
+    let total_duration = 64;
+    for _ in 0..total_duration {
+        std::thread::sleep(Duration::from_secs(1));
+    }
+    std::thread::sleep(Duration::from_secs(1));
 
     while !quit {
         app.poll_events(
@@ -103,22 +93,6 @@ fn android_main(app: AndroidApp) {
                         match main_event {
                             MainEvent::SaveState { saver, .. } => {
                                 saver.store("foo://bar".as_bytes());
-                            }
-                            MainEvent::Pause => {
-                                if let Err(err) = stream.pause() {
-                                    log::error!("Failed to pause audio playback: {err}");
-                                }
-                            }
-                            MainEvent::Resume { loader, .. } => {
-                                if let Some(state) = loader.load() {
-                                    if let Ok(uri) = String::from_utf8(state) {
-                                        info!("Resumed with saved state = {uri:#?}");
-                                    }
-                                }
-
-                                if let Err(err) = stream.play() {
-                                    log::error!("Failed to start audio playback: {err}");
-                                }
                             }
                             MainEvent::InitWindow { .. } => {
                                 render_state = Some(());
@@ -142,19 +116,19 @@ fn android_main(app: AndroidApp) {
                     _ => {}
                 }
 
-                if redraw_pending {
-                    if let Some(_rs) = render_state {
-                        redraw_pending = false;
-
-                        // Handle input
-                        app.input_events(|event| {
-                            info!("Input Event: {event:?}");
-                            InputStatus::Unhandled
-                        });
-
-                        info!("Render...");
-                    }
-                }
+                // if redraw_pending {
+                //     if let Some(_rs) = render_state {
+                //         redraw_pending = false;
+                //
+                //         // Handle input
+                //         app.input_events(|event| {
+                //             info!("Input Event: {event:?}");
+                //             InputStatus::Unhandled
+                //         });
+                //
+                //         info!("Render...");
+                //     }
+                // }
             },
         );
     }

@@ -7,7 +7,7 @@ use audio::*;
 #[no_mangle]
 fn android_main(app: AndroidApp) {
     android_logger::init_once(
-        android_logger::Config::default().with_max_level(log::LevelFilter::Info),
+        android_logger::Config::default(),
     );
 
     let mut quit = false;
@@ -70,19 +70,19 @@ fn android_main(app: AndroidApp) {
                     _ => {}
                 }
 
-                if redraw_pending {
-                    if let Some(_rs) = render_state {
-                        redraw_pending = false;
-
-                        // Handle input
-                        app.input_events(|event| {
-                            info!("Input Event: {event:?}");
-                            InputStatus::Unhandled
-                        });
-
-                        info!("Render...");
-                    }
-                }
+                // if redraw_pending {
+                //     if let Some(_rs) = render_state {
+                //         redraw_pending = false;
+                //
+                //         // Handle input
+                //         app.input_events(|event| {
+                //             info!("Input Event: {event:?}");
+                //             InputStatus::Unhandled
+                //         });
+                //
+                //         info!("Render...");
+                //     }
+                // }
             },
         );
     }

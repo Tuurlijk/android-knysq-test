@@ -7,10 +7,10 @@ edition = "2021"
 
 [dependencies]
 log = "0.4"
-android_logger = "0.13.1"
-android-activity = { version = "0.4", features = ["game-activity"] }
-oboe = { version = "0.5", features = ["java-interface"] }
-atomic_float = "0.1"
+android_logger = "0.14.1"
+android-activity = { version = "0.6.0", features = ["game-activity"] }
+oboe = { version = "0.6.1", features = ["java-interface"] }
+atomic_float = "1.1.0"
 
 [lib]
 name="main"
