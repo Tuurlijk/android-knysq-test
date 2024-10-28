@@ -142,19 +142,19 @@ fn android_main(app: AndroidApp) {
                     _ => {}
                 }
 
-                if redraw_pending {
-                    if let Some(_rs) = render_state {
-                        redraw_pending = false;
-
-                        // Handle input
-                        app.input_events(|event| {
-                            info!("Input Event: {event:?}");
-                            InputStatus::Unhandled
-                        });
-
-                        info!("Render...");
-                    }
-                }
+                // if redraw_pending {
+                //     if let Some(_rs) = render_state {
+                //         redraw_pending = false;
+                //
+                //         // Handle input
+                //         app.input_events(|event| {
+                //             info!("Input Event: {event:?}");
+                //             InputStatus::Unhandled
+                //         });
+                //
+                //         info!("Render...");
+                //     }
+                // }
             },
         );
     }

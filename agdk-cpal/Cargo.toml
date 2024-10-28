@@ -8,11 +8,11 @@ edition = "2021"
 [dependencies]
 log = "0.4"
 android_logger = "0.11.0"
-android-activity = { version = "0.4", features = ["game-activity"] }
+android-activity = { version = "0.6.0", features = ["game-activity"] }
 cpal = "0.15"
-atomic_float = "0.1"
+atomic_float = "1.1.0"
 anyhow = "1"
 
 [lib]
 name="main"
-crate_type=["cdylib"]
+crate-type=["cdylib"]
