@@ -7,11 +7,12 @@ edition = "2021"
 
 [dependencies]
 log = "0.4"
-android_logger = "0.11.0"
+android_logger = "0.14.1"
 android-activity = { version = "0.6.0", features = ["game-activity"] }
-cpal = "0.15"
+knyst = { path = "../../knyst/knyst", features = ["cpal"], default-features = false }
 atomic_float = "1.1.0"
 anyhow = "1"
+cpal = "0.15"
 
 [lib]
 name="main"
